@@ -158,28 +158,28 @@ export function DocsPage() {
                   </tr>
                   <tr>
                     <td>Warning after</td>
-                    <td>10 s</td>
+                    <td>30 s</td>
                     <td>How long a deviation must last before a warning.</td>
                   </tr>
                   <tr>
                     <td>Critical after</td>
-                    <td>30 s</td>
-                    <td>Escalation time. It also needs a clearly larger deviation.</td>
+                    <td>60 s</td>
+                    <td>How long a clearly larger deviation must last before escalating.</td>
                   </tr>
                   <tr>
                     <td>Recovery confirmation</td>
-                    <td>3 s</td>
+                    <td>5 s</td>
                     <td>Sustained improvement needed before Pip relaxes.</td>
                   </tr>
                   <tr>
                     <td>Notification gap</td>
-                    <td>30 s</td>
+                    <td>60 s</td>
                     <td>Minimum time between Windows notifications.</td>
                   </tr>
                   <tr>
                     <td>Sound</td>
                     <td>On</td>
-                    <td>Short Windows system sound with reminders.</td>
+                    <td>Pip&apos;s own two-note chime with reminders, with a volume setting.</td>
                   </tr>
                 </tbody>
               </table>

@@ -27,12 +27,14 @@ flowchart TB
         monitor[monitor.py<br/>lifecycle controller]
         alerts[alerts.py<br/>pure policy]
         notifications[notifications.py]
+        sound[sound.py<br/>Pip's chime]
         session[session.py]
         single[single_instance.py]
     end
     subgraph ui["app/ui + application.py"]
         window[main_window.py]
         tray[tray.py]
+        floating[floating_pet.py<br/>desktop Pip]
         pet[pet_widget.py + sprites.py]
         dialog[settings_dialog.py]
         app[application.py]
@@ -46,9 +48,11 @@ flowchart TB
     monitor --> engine
     monitor --> alerts
     monitor --> notifications
+    app --> sound
     app --> monitor
     app --> window
     app --> tray
+    app --> floating
     app --> settings
     engine --> calibration
     engine --> tracker
@@ -142,7 +146,11 @@ explicit priority: Calibrating › Unavailable (both signals) › Critical › W
 * `TrayNotificationBackend` → `QSystemTrayIcon.showMessage`, which uses `Shell_NotifyIcon` on
   Windows. Windows 10/11 show these as native toasts and honour Focus / Do Not Disturb. No
   AppUserModelID registration is needed, which suits an unpackaged Python app.
-* `SystemSoundPlayer` → `winsound.MessageBeep`, which is asynchronous.
+* `ChimePlayer` (`sound.py`) → `winsound.PlaySound` of the bundled `pip_chime.wav`,
+  asynchronous and never looped. A new chime replaces one still playing, chimes under 1.5 s
+  apart are skipped, and volume is applied by writing a scaled copy to
+  `%APPDATA%\PixelPosture\cache\sounds`. A missing or unreadable file falls back to
+  `winsound.MessageBeep`.
 
 Every exception from either is caught, logged and reported in a `DeliveryReport`.
 Monitoring continues regardless.
@@ -158,6 +166,20 @@ rendered with nearest-neighbour scaling in Qt (`pet_widget.py`, tray and window 
 exported to SVG for the website (`scripts/export_sprites.py`), so the app and the site always
 match. Animation is two frames at about 2 fps, off when reduced motion is on, and paused while
 the window is hidden.
+
+## Floating Pip
+
+`ui/floating_pet.py` is a second view of the same state, alongside the dashboard and the tray.
+`PixelPostureApp` feeds it the same status and results as the tray icon (both use
+`tray.pet_state_for_status` for the not-monitoring looks) and connects its menu to the same
+controller slots, so there is no second lifecycle. It is a parentless `Qt.Tool` window with
+`FramelessWindowHint`, `WindowStaysOnTopHint`, `WindowDoesNotAcceptFocus`,
+`WA_ShowWithoutActivating` and a translucent background. `setMask` limits it to Pip's opaque
+pixels (from `QImage.createAlphaMask`) plus the shadow, so the rest of the square is
+click-through. It draws a single frame and repaints only when the state changes.
+`place_on_screens` is a pure function (unit-tested) that keeps it fully on a connected
+screen's available area; it runs on show, after a drag, and when screens are added, removed
+or resized. Only a position the user dragged to is saved.
 
 ## Settings
 

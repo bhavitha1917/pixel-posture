@@ -1,18 +1,19 @@
-"""Notification delivery: native Windows notifications via the tray icon, plus sound.
+"""Notification delivery: native Windows notifications via the tray icon, plus Pip's chime.
 
 ``QSystemTrayIcon.showMessage`` uses ``Shell_NotifyIcon`` on Windows; Windows 10/11 render
 these as native toast notifications attributed to the tray icon's process. This needs no
-AppUserModelID registration and follows the user's Do Not Disturb / Focus settings.
+AppUserModelID registration and follows the user's Do Not Disturb / Focus settings. The
+chime (``services/sound.py``) is played by the app itself, so reminders sound the same
+whether or not Windows plays its own notification sound.
 """
 
 from __future__ import annotations
 
 import logging
-import sys
 from dataclasses import dataclass
 from typing import Protocol
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+from PySide6.QtWidgets import QSystemTrayIcon
 
 from app.posture.models import SignalLevel
 from app.services.alerts import Alert
@@ -43,18 +44,6 @@ class TrayNotificationBackend:
             else QSystemTrayIcon.MessageIcon.Information
         )
         self._tray.showMessage(title, message, icon, NOTIFICATION_TIMEOUT_MS)
-
-
-class SystemSoundPlayer:
-    """Plays the Windows 'asterisk' sound asynchronously (``MessageBeep`` does not block)."""
-
-    def play(self) -> None:
-        if sys.platform == "win32":
-            import winsound  # noqa: PLC0415 - Windows-only stdlib module
-
-            winsound.MessageBeep(winsound.MB_ICONASTERISK)
-        else:
-            QApplication.beep()
 
 
 @dataclass(frozen=True)

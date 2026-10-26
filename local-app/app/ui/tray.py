@@ -19,12 +19,20 @@ STATUS_TEXT = {
 }
 
 
+def pet_state_for_status(status: MonitorStatus) -> PetState | None:
+    """Pip's look when not monitoring; None while posture results should drive it."""
+    if status in (MonitorStatus.RUNNING, MonitorStatus.STARTING):
+        return None
+    return PetState.CALIBRATING if status is MonitorStatus.IDLE else PetState.UNAVAILABLE
+
+
 class TrayController(QObject):
     open_requested = Signal()
     start_requested = Signal()
     pause_requested = Signal()
     resume_requested = Signal()
     settings_requested = Signal()
+    floating_pet_toggled = Signal(bool)
     quit_requested = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -37,6 +45,8 @@ class TrayController(QObject):
         self.pause_action = self.menu.addAction("Pause Monitoring")
         self.resume_action = self.menu.addAction("Resume Monitoring")
         self.menu.addSeparator()
+        self.floating_pet_action = self.menu.addAction("Show Pip on Desktop")
+        self.floating_pet_action.setCheckable(True)
         self.settings_action = self.menu.addAction("Settings…")
         self.menu.addSeparator()
         self.quit_action = self.menu.addAction(f"Quit {APP_NAME}")
@@ -46,6 +56,7 @@ class TrayController(QObject):
         self.pause_action.triggered.connect(self.pause_requested.emit)
         self.resume_action.triggered.connect(self.resume_requested.emit)
         self.settings_action.triggered.connect(self.settings_requested.emit)
+        self.floating_pet_action.toggled.connect(self.floating_pet_toggled.emit)
         self.quit_action.triggered.connect(self.quit_requested.emit)
         self.icon.activated.connect(self._on_activated)
         self.icon.setContextMenu(self.menu)
@@ -71,10 +82,15 @@ class TrayController(QObject):
         self.start_action.setVisible(status in (MonitorStatus.IDLE, MonitorStatus.ERROR))
         self.pause_action.setVisible(active)
         self.resume_action.setVisible(status is MonitorStatus.PAUSED)
-        if not active:
-            self.update_pet_state(PetState.UNAVAILABLE if status is not MonitorStatus.IDLE
-                                  else PetState.CALIBRATING)  # fmt: skip
+        idle_state = pet_state_for_status(status)
+        if idle_state is not None:
+            self.update_pet_state(idle_state)
         self._refresh_tooltip()
+
+    def set_floating_pet_checked(self, checked: bool) -> None:
+        self.floating_pet_action.blockSignals(True)
+        self.floating_pet_action.setChecked(checked)
+        self.floating_pet_action.blockSignals(False)
 
     def update_pet_state(self, state: PetState) -> None:
         if state is not self._pet_state:

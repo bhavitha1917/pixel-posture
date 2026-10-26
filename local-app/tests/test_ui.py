@@ -9,7 +9,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from conftest import make_baseline, obs, timeline
+from conftest import make_baseline, obs, short_config, timeline
+from PySide6.QtWidgets import QLabel
 
 from app.application import PixelPostureApp
 from app.posture.config import Sensitivity
@@ -110,7 +111,7 @@ def test_window_buttons_emit_intents(qtbot, window):
 
 
 def test_result_updates_pet_and_panels(window):
-    engine = PostureEngine(baseline=make_baseline())
+    engine = PostureEngine(short_config(), make_baseline())
     result = None
     for t in timeline(0, 15, 10):
         result = engine.update(obs(t, 0.0, 2.0))
@@ -307,3 +308,47 @@ def test_camera_error_is_shown_to_the_user(qtbot, qapp, tmp_path, monkeypatch):
     assert application.window.banner.text.text() == "Camera 0 could not be opened."
     assert application.window.start_button.text() == "Try Again"
     application.quit()
+
+
+def test_settings_dialog_sound_and_floating_pet_controls(qtbot):
+    dialog = SettingsDialog(AppSettings(), chime_available=False)
+    qtbot.addWidget(dialog)
+    assert dialog.volume.value() == 70 and dialog.floating_pet.isChecked()
+    dialog.volume.setValue(40)
+    with qtbot.waitSignal(dialog.sound_preview_requested, timeout=500) as preview:
+        dialog.preview_sound.click()
+    assert preview.args == [40]
+    dialog.floating_pet.setChecked(False)
+    result = dialog.result_settings()
+    assert result.sound_volume == 40 and not result.floating_pet_enabled
+    assert any("chime file is missing" in w.text() for w in dialog.findChildren(QLabel))
+
+
+def test_quick_settings_text_shows_new_defaults(window):
+    window.apply_settings(AppSettings())
+    text = window.alert_timing.text()
+    assert "Warning after 30 s" in text and "critical after 1 min" in text
+    assert "Recovery after 5 s" in text and "at most every 1 min." in text
+
+
+def test_v1_migration_note_is_shown_once(qtbot, qapp, tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(qapp, "quit", lambda: None)
+    monkeypatch.setattr(TrayController, "available", property(lambda self: True))
+    monkeypatch.setattr("app.application.missing_or_invalid", lambda: [])  # models absent in CI
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"warning_seconds": 10, "critical_seconds": 30, "recovery_seconds": 3}),
+        encoding="utf-8",
+    )
+    store = SettingsStore(path)
+    application = PixelPostureApp(qapp, store, store.load())
+    qtbot.addWidget(application.window)
+    try:
+        assert "gentler" in application.window.banner.text.text()
+        assert json.loads(path.read_text(encoding="utf-8"))["settings_version"] == 2
+    finally:
+        application.quit()
+    store.load()
+    assert store.migration_notes == []

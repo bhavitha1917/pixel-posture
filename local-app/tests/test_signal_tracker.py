@@ -1,13 +1,13 @@
 import random
 
 import pytest
-from conftest import timeline
+from conftest import SHORT, timeline
 
 from app.posture.config import SeverityLevels, TimingConfig
 from app.posture.models import SignalKind, SignalLevel, SignalStatus
 from app.posture.signal_tracker import SignalTracker
 
-TIMING = TimingConfig()
+TIMING = TimingConfig(**SHORT)
 LEVELS = SeverityLevels()
 
 
@@ -158,7 +158,7 @@ def test_irregular_frame_intervals():
 def test_reconfigure_keeps_episode():
     tr = tracker()
     feed(tr, 0, 8, 2.0)
-    tr.configure(TimingConfig(warning_s=5.0), LEVELS)
+    tr.configure(TimingConfig(**{**SHORT, "warning_s": 5.0}), LEVELS)
     assert feed(tr, 8, 9, 2.0).level is SignalLevel.WARNING
 
 

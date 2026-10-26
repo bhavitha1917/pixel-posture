@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 import pytest
-from conftest import make_baseline, obs, timeline
+from conftest import make_baseline, obs, short_config, timeline
 
 from app.posture.engine import PostureEngine
 from app.posture.models import PetState, PostureResult, SignalKind, SignalLevel
@@ -19,7 +19,7 @@ def run(policy: AlertPolicy, engine: PostureEngine, start, end, back=0.0, head=0
 
 
 def setup(cooldown=30.0, recovery=False):
-    return AlertPolicy(cooldown, recovery), PostureEngine(baseline=make_baseline())
+    return AlertPolicy(cooldown, recovery), PostureEngine(short_config(), make_baseline())
 
 
 def test_warning_produces_one_alert_per_episode():

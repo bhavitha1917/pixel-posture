@@ -6,7 +6,10 @@
 |---|---|---|
 | Geometry, calibration, smoothing, timers, state machine (`app/posture`) | Deterministic unit tests feeding **synthetic observations** into the real modules | No |
 | Alert policy and delivery (`services/alerts.py`, `notifications.py`) | Real policy driven by the real engine. Only the OS boundary (notification backend, sound) is replaced by recording fakes | No |
-| Settings (`settings/store.py`) | Round-trip, clamping, wrong types, corrupt-file backup | No |
+| Shipped reminder timing (30 s / 60 s severe / 5 s / 60 s cooldown) | `test_default_timing.py`: brief vs sustained vs severe deviations, recovery, cooldown spacing, missing landmarks and sleep gaps, back/head independence, all on the real defaults | No |
+| Settings (`settings/store.py`) | Round-trip, clamping, wrong types, corrupt-file backup, version-1 upgrade that keeps customised values | No |
+| Pip's chime (`services/sound.py`) | Asset found, format and loudness, matches its generator, bundled by the spec; volume scaling, repeat guard, disabled sound, missing/corrupt/unsupported file → fallback. Playback is replaced by a recorder (silent) | No |
+| Floating Pip (`ui/floating_pet.py`) | Window flags (tool, frameless, topmost, no focus), size, click-through mask, repaint only on change, menu per status, drag, multi-monitor placement, and the app lifecycle (close/minimize dashboard, hide/show from tray and settings, quit) on the `offscreen` platform | No |
 | Lifecycle (`services/monitor.py`, `worker.py`) | Real `QThread` + controller + engine. Only the camera and model inference are faked | No |
 | UI wiring (window, tray, dialog, application) | pytest-qt on the `offscreen` platform | No |
 | Single instance | A real second **process** connects to the first | No |
@@ -35,19 +38,18 @@ npm test
 npm run build
 ```
 
-## Results (re-run during the stabilization audit, 2026-10-26; Windows 11, Python 3.11.9, Node 24.19)
+## Results (re-run after adding floating Pip, gentler timing and the chime, 2026-10-27; Windows 11, Python 3.11.9, Node 24.19)
 
 | Command | Result |
 |---|---|
-| `pytest` | **134 passed**, 0 failed (≈12 s) |
+| `pytest` | **199 passed**, 0 failed (≈26 s) |
 | `ruff check .` | All checks passed |
 | `ruff format --check .` | All files formatted |
-| `mypy` (strict) | No issues in 35 source files |
+| `mypy` (strict) | No issues in 38 source files |
 | `npm run lint` | No warnings or errors |
-| `npm ci` | Clean install from the lockfile; `npm audit --omit=dev`: 0 vulnerabilities |
 | `npm test` | **20 passed**, 0 failed |
-| `npm run build` | Succeeded (JS ≈300 kB, ≈95 kB gzipped) |
-| `python local-app/main.py --self-check` | Exit 0: models verified and loaded; camera opened at 640×480; 30 frames analysed; camera released |
+| `npm run build` | Succeeded (JS ≈301 kB, ≈95 kB gzipped) |
+| `python local-app/main.py --self-check` | Exit 0: models verified and loaded; camera opened; 30 frames analysed; camera released |
 | PyInstaller build + `Start-Process PixelPosture.exe --self-check -Wait` | Build OK; exit code 0; results in the log; GUI start logged no warnings |
 | Headless-Chrome audit (5 routes × 375/768/1280 px) | 0 issues: overflow, broken images, alt text, unnamed controls, console errors, failed requests, camera-API calls, contrast; focus visible; reduced motion respected |
 
@@ -74,11 +76,14 @@ These need a person in front of the camera, or a visual check of Windows UI, and
 **not** verified automatically:
 
 - [ ] Windows toast notifications visibly appear. Steps: (1) Windows Settings → System → Notifications: Notifications **On**, Do not disturb **Off**. (2) Start Pixel Posture → **Settings → Send test notification**. A toast titled "Pixel Posture test" should appear bottom-right, and in the notification centre (Win+N). (3) Close the main window (it goes to the tray), right-click Pip → Settings → Send test notification again. It should still appear. (4) Turn on Do not disturb and repeat. It should be suppressed (it may still land silently in the notification centre). If nothing appears, look for a "Python" or "PixelPosture" entry under Settings → System → Notifications and make sure it is allowed.
-- [ ] The alert sound plays, and stops when *Sound* is off.
+- [ ] **Pip's chime.** Settings → Reminders → **Preview sound**: a soft two-note chime (low then high) plays once. Move the volume slider to 20 % and preview again: quieter. 100 %: louder but not harsh. Click Preview several times quickly: chimes restart rather than pile up. Untick *Play Pip's chime*, Save, Send test notification: the toast appears with no chime. (Windows may add its own toast sound; that is controlled in Windows notification settings.)
 - [ ] Sitting upright for a few minutes keeps Pip **Thriving** with no notifications.
-- [ ] Leaning toward the screen for more than 10 s triggers **Warning** and one notification. Sitting back recovers after about 3 s.
-- [ ] Looking down at a phone or notes for more than 10 s triggers a head-tilt **Warning** independently of the back signal.
-- [ ] Staying clearly slouched for more than 30 s escalates to **Critical**. A mild slouch stays at Warning.
+- [ ] Leaning in or slouching for about **20 s** and then sitting up gives **no** Warning.
+- [ ] Leaning toward the screen for more than **30 s** triggers **Warning** and one notification with the chime. Sitting back recovers after about **5–6 s**; sitting up for only 3 s and slouching again keeps the Warning.
+- [ ] Looking down at a phone or notes for more than 30 s triggers a head-tilt **Warning** independently of the back signal.
+- [ ] Staying **clearly** slouched for more than **60 s** escalates to **Critical**. A mild slouch stays at Warning however long it lasts. The second notification comes at least 60 s after the first.
+- [ ] **Floating Pip.** Launch: a small Pip appears bottom-right above the taskbar. Click into VS Code or Chrome and type: Pip stays on top and typing is never interrupted. Click just beside Pip (inside its square but not on its pixels): the click reaches the app underneath. Drag Pip to another spot (and to a second monitor if you have one), quit and relaunch: it comes back there. Drag it half off a screen edge: it slides fully back on. Pip's face changes with Thriving / Warning / Critical; it shows Zs when paused or when you leave the frame.
+- [ ] **Floating Pip menu.** Right-click Pip: Open Dashboard, Pause/Resume Monitoring, Hide Pip, Quit Pixel Posture all work. After Hide Pip, the tray menu's *Show Pip on Desktop* and the Quick settings checkbox bring it back. Close and minimize the dashboard: Pip stays and monitoring continues (camera light stays on). Quit from Pip: Pip, dashboard and tray icon disappear and the camera light turns off.
 - [ ] Leaving the frame shows **Tracking unavailable** within about 2 s and sends no posture notifications.
 - [ ] Minimizing the window or closing it to the tray keeps notifications coming while you work in other apps.
 - [ ] Tray menu: Open / Pause / Resume / Settings / Quit all behave as labelled, and the Windows camera indicator turns off on Pause and Quit.

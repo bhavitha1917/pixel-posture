@@ -93,3 +93,68 @@ def test_baseline_camera_match():
     assert b.matches_camera(0, 640, 480)
     assert not b.matches_camera(1, 640, 480)
     assert not b.matches_camera(0, 1280, 720)
+
+
+V1_FILE = {
+    "camera_index": 1,
+    "sensitivity": "relaxed",
+    "warning_seconds": 10.0,
+    "critical_seconds": 30.0,
+    "recovery_seconds": 3.0,
+    "cooldown_seconds": 30.0,
+    "sound_enabled": False,
+}
+
+
+def write(tmp_path, data):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return SettingsStore(path)
+
+
+def test_untouched_v1_timing_moves_to_the_new_defaults_once(tmp_path):
+    store = write(tmp_path, V1_FILE)
+    s = store.load()
+    assert (s.warning_seconds, s.critical_seconds, s.recovery_seconds) == (30, 60, 5)
+    assert s.cooldown_seconds == 60
+    assert s.camera_index == 1 and s.sensitivity is Sensitivity.RELAXED and not s.sound_enabled
+    assert len(store.migration_notes) == 2
+    store.save(s)
+    assert store.load() == s and store.migration_notes == []
+
+
+def test_customised_v1_thresholds_are_preserved(tmp_path):
+    store = write(tmp_path, {**V1_FILE, "warning_seconds": 15.0, "cooldown_seconds": 120.0})
+    s = store.load()
+    assert (s.warning_seconds, s.critical_seconds, s.recovery_seconds) == (15, 30, 3)
+    assert s.cooldown_seconds == 120
+    assert store.migration_notes == []
+
+
+def test_only_the_untouched_group_is_migrated(tmp_path):
+    store = write(tmp_path, {**V1_FILE, "critical_seconds": 45.0})
+    s = store.load()
+    assert (s.warning_seconds, s.critical_seconds, s.cooldown_seconds) == (10, 45, 60)
+    assert len(store.migration_notes) == 1
+
+
+def test_v2_values_equal_to_old_defaults_are_a_choice(tmp_path):
+    store = write(tmp_path, {**V1_FILE, "settings_version": 2})
+    s = store.load()
+    assert (s.warning_seconds, s.critical_seconds, s.cooldown_seconds) == (10, 30, 30)
+    assert store.migration_notes == []
+
+
+def test_new_fields_round_trip_and_validate(tmp_path):
+    store = SettingsStore(tmp_path / "s.json")
+    s = AppSettings(sound_volume=35, floating_pet_enabled=False, floating_pet_position=(-900, 40))
+    store.save(s)
+    assert store.load() == s
+    bad = write(
+        tmp_path,
+        {"sound_volume": 250, "floating_pet_enabled": "yes", "floating_pet_position": [1, "x"]},
+    ).load()
+    assert bad.sound_volume == 100
+    assert bad.floating_pet_enabled is True
+    assert bad.floating_pet_position is None
+    assert write(tmp_path, {"sound_volume": True}).load().sound_volume == 70

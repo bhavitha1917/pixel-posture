@@ -169,8 +169,8 @@ export function DemoPage() {
           <h3>How the real app decides</h3>
           <p style={{ margin: 0 }}>
             The desktop app compares live landmark estimates with your own calibrated baseline,
-            warns after about 10 seconds of sustained deviation, escalates only if the
-            deviation is clearly larger and lasts about 30 seconds, and needs 3 seconds of
+            warns after about 30 seconds of sustained deviation, escalates only if a clearly
+            larger deviation lasts about 60 seconds, and needs 5 seconds of
             improvement before it counts as recovered. <Link to="/#how-it-works">See the
             pipeline</Link> or <Link to="/docs">install the app</Link>.
           </p>

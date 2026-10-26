@@ -14,6 +14,8 @@ class SignalTracker:
     * Smoothing is a time-based EMA, so irregular frame intervals are handled correctly.
     * An *issue episode* starts when the smoothed severity reaches ``levels.enter`` and ends
       only after it has stayed below ``levels.exit`` for ``timing.recovery_s``.
+    * Critical needs a clearly larger deviation (``levels.critical``) that has itself lasted
+      ``timing.critical_s``; it falls back to Warning below ``levels.critical_exit``.
     * An episode is not escalated to Warning while the user is visibly improving (severity
       below ``levels.exit``), so a short slouch that is already being corrected never warns.
     * Missing measurements are never treated as good posture: they do not advance recovery,
@@ -36,6 +38,7 @@ class SignalTracker:
         self._last_seen: float | None = None
         self._episode_start: float | None = None
         self._improving_since: float | None = None
+        self._severe_since: float | None = None
         self._critical = False
         self._warned = False
         self._component: BackComponent | None = None
@@ -80,6 +83,7 @@ class SignalTracker:
             if smoothed >= levels.enter:
                 self._episode_start = now
                 self._improving_since = None
+                self._severe_since = None
                 self._critical = False
                 self._warned = False
             return
@@ -90,6 +94,7 @@ class SignalTracker:
             elif now - self._improving_since >= timing.recovery_s:
                 self._episode_start = None
                 self._improving_since = None
+                self._severe_since = None
                 self._critical = False
                 self._warned = False
                 return
@@ -99,11 +104,15 @@ class SignalTracker:
         duration = now - self._episode_start
         if duration >= timing.warning_s and self._improving_since is None:
             self._warned = True
-        if not self._critical:
-            if duration >= timing.critical_s and smoothed >= levels.critical:
-                self._critical = True
-        elif smoothed < levels.critical_exit:
+        # The severe run starts at levels.critical and survives dips down to critical_exit.
+        if smoothed < levels.critical_exit:
+            self._severe_since = None
             self._critical = False
+        elif self._severe_since is None:
+            if smoothed >= levels.critical:
+                self._severe_since = now
+        elif not self._critical and now - self._severe_since >= timing.critical_s:
+            self._critical = True
 
     def _status(self, now: float) -> SignalStatus:
         if self._episode_start is None:

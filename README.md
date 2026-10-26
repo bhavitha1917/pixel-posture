@@ -81,8 +81,9 @@ Pixel Posture aims to be:
 - Robust calibration: many frames, median baseline, stability check, and rejection if the face or shoulders cannot be detected.
 - Time-based smoothing (frame-rate independent), hysteresis and recovery confirmation.
 - Pet state machine: **Calibrating → Thriving → Warning → Critical**, plus **Tracking unavailable**.
-- In-app reminders, native Windows notifications (through the tray icon), an optional system sound, and cooldown/duplicate suppression.
-- System tray with Open, Start/Pause/Resume, Settings and Quit. Closing the window minimizes to the tray by default; this can be configured.
+- In-app reminders, native Windows notifications (through the tray icon), Pip's own gentle two-note chime (optional, with a volume setting), and cooldown/duplicate suppression.
+- **Floating Pip:** a small, frameless, always-on-top Pip on your desktop that shows your posture state while you work in other apps. Drag it anywhere; right-click for Open Dashboard / Pause / Resume / Hide Pip / Quit.
+- System tray with Open, Start/Pause/Resume, Show Pip on Desktop, Settings and Quit. Closing the window minimizes to the tray by default; this can be configured.
 - Single-instance guard. Launching a second copy brings up the existing window instead.
 - Live preview (optional, can be turned off) with an optional landmark overlay.
 - Session summary: monitored time, share of time within your usual range, and reminders sent.
@@ -130,7 +131,7 @@ flowchart LR
         RES --> UI["MainWindow + PetWidget"]
         RES --> AP["AlertPolicy<br/>cooldown + dedupe"]
         AP --> NB["TrayNotificationBackend<br/>(native Windows toast)"]
-        AP --> SND["SoundPlayer"]
+        AP --> SND["ChimePlayer"]
         RES --> TRAY["Tray icon + menu"]
         SET["SettingsStore (JSON)"] <--> MC
     end
@@ -183,7 +184,7 @@ Module responsibilities (each one is testable without the UI or a webcam unless 
 | 5 | Calibration | `app/posture/calibration.py` |
 | 6 | Temporal filtering and state transitions | `app/posture/signal_tracker.py`, `app/posture/engine.py` |
 | 7 | Alert scheduling and cooldowns | `app/services/alerts.py` |
-| 8 | Notification delivery and sound | `app/services/notifications.py` |
+| 8 | Notification delivery and sound | `app/services/notifications.py`, `app/services/sound.py` |
 | 9 | Desktop UI and pet rendering | `app/ui/` |
 | 10 | Persistent settings | `app/settings/store.py` |
 | 11 | Website | `showcase/` |
@@ -201,7 +202,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 | **OpenCV (`opencv-contrib-python`)** | Webcam capture (DirectShow/MSMF on Windows) and frame preparation. The *contrib* build is the one MediaPipe itself depends on; installing plain `opencv-python` as well would create two conflicting `cv2` packages. |
 | **NumPy** | Robust statistics (medians, interquartile ranges) and matrix maths for head pose. |
 | **Native notifications via `QSystemTrayIcon.showMessage`** | On Windows 10/11 Qt sends these through `Shell_NotifyIcon`, and Windows shows them as native toast notifications attributed to the tray icon. This needs no extra dependency, no AppUserModelID registration and no packaging step, and it respects Windows *Do Not Disturb*. `winotify`/`windows-toasts` were considered, but they need a registered app identity to be reliable for unpackaged Python apps. |
-| **`winsound` (stdlib)** | Short asynchronous system sound. No extra dependency. |
+| **`winsound.PlaySound` (stdlib)** | Plays Pip's bundled WAV chime asynchronously. No extra dependency: Qt Multimedia is not part of the slim `PySide6-Essentials` wheel. Volume is applied by scaling the samples into a cached copy. |
 | **pytest + pytest-qt** | Unit tests for the posture logic, plus Qt lifecycle tests run on the `offscreen` platform. |
 | **Ruff, mypy** | Linting, formatting and static type checking. |
 | **React 19 + Vite + TypeScript** | Fast, typed, static website that is easy to host. |
@@ -232,7 +233,8 @@ Pixel_Posture/
 │   ├── main.py                   ← desktop entry point
 │   ├── scripts/
 │   │   ├── download_models.py    ← fetches + SHA-256-verifies MediaPipe models
-│   │   └── export_sprites.py     ← exports Pip's sprites as SVG for the website
+│   │   ├── export_sprites.py     ← exports Pip's sprites as SVG for the website
+│   │   └── generate_chime.py     ← rebuilds Pip's reminder chime (stdlib, deterministic)
 │   ├── packaging/
 │   │   └── pixel_posture.spec    ← experimental PyInstaller spec
 │   ├── app/
@@ -254,7 +256,8 @@ Pixel_Posture/
 │   │   │   └── analyzer.py       ← FrameAnalyzer: frame → Observation
 │   │   ├── services/
 │   │   │   ├── alerts.py         ← AlertPolicy (cooldowns, dedupe, pause)
-│   │   │   ├── notifications.py  ← NotificationBackend + tray backend + sound
+│   │   │   ├── notifications.py  ← NotificationBackend + tray backend + dispatcher
+│   │   │   ├── sound.py          ← ChimePlayer: Pip's chime, volume, repeat guard, fallback
 │   │   │   ├── worker.py         ← MonitorWorker (QThread worker)
 │   │   │   ├── monitor.py        ← MonitorController (lifecycle owner)
 │   │   │   ├── session.py        ← session statistics
@@ -265,12 +268,14 @@ Pixel_Posture/
 │   │   │   ├── theme.py          ← design tokens + Qt stylesheet
 │   │   │   ├── sprites.py        ← pixel-art definitions (single source for app + site)
 │   │   │   ├── pet_widget.py
+│   │   │   ├── floating_pet.py   ← frameless always-on-top desktop Pip + screen placement
 │   │   │   ├── widgets.py        ← cards, chips, signal panels, preview
 │   │   │   ├── settings_dialog.py
 │   │   │   ├── tray.py
 │   │   │   └── main_window.py
 │   │   └── resources/
 │   │       ├── fonts/            ← Press Start 2P (SIL OFL) + license
+│   │       ├── sounds/           ← pip_chime.wav (original, generated by generate_chime.py)
 │   │       └── models/           ← downloaded .task files (git-ignored) + README with provenance
 │   └── tests/                    ← pytest suite for the desktop app
 └── showcase/                     ← React + Vite website (independent)
@@ -316,17 +321,27 @@ stateDiagram-v2
 
 | Action | Behaviour |
 |---|---|
-| **Launch** | Window opens. Camera stays **off**. A tray icon appears. A second launch focuses the existing instance. |
+| **Launch** | Window opens. Camera stays **off**. A tray icon appears, and floating Pip appears at its saved spot (bottom-right of the main screen the first time). A second launch focuses the existing instance. |
 | **Start Monitoring** | Opens the selected camera on the worker thread. Starts calibration automatically if there is no saved baseline. |
 | **Minimize / switch apps** | Monitoring continues. Preview rendering pauses while the window is hidden, to save CPU; inference keeps running. |
-| **Close window (X)** | Default: hides to the tray and shows a one-time explanation. If *Close button minimizes to tray* is turned off, a dialog asks whether to **Quit** or **Keep running in tray**. |
+| **Close window (X)** | Default: hides to the tray and shows a one-time explanation. Floating Pip stays on the desktop and monitoring continues. If *Close button minimizes to tray* is turned off, a dialog asks whether to **Quit** or **Keep running in tray**. |
 | **Pause** | Stops the worker and **releases the camera** (camera light turns off). No posture judgements, no notifications. Your baseline is kept. |
 | **Resume** | Restarts the worker with the same baseline. Issue timers start fresh. |
 | **Stop** | Ends the session, releases the camera and returns to Idle. |
-| **Quit** (tray or dialog) | Stops monitoring, waits for the worker thread to finish (bounded wait), releases the camera, saves settings and exits. |
+| **Quit** (tray, floating Pip or dialog) | Stops monitoring, waits for the worker thread to finish (bounded wait), releases the camera, saves settings, closes floating Pip and the dashboard, removes the tray icon and exits. |
 | **Camera stops delivering frames** | Within about 0.25 s the worker reports "Camera is not delivering frames". After the 2 s grace the state becomes *Tracking unavailable*, so stale posture states are never shown. After 3 s without frames (typical after sleep/resume or a USB hiccup) the camera is released and reopened **once**. If that fails, or frames still don't come, monitoring stops with a visible error and *Try Again*. |
 
-The tray menu contains **Open Pixel Posture**, **Start Monitoring** / **Pause Monitoring** / **Resume Monitoring** (depending on state), **Settings…** and **Quit Pixel Posture**.
+The tray menu contains **Open Pixel Posture**, **Start Monitoring** / **Pause Monitoring** / **Resume Monitoring** (depending on state), **Show Pip on Desktop** (a checkbox), **Settings…** and **Quit Pixel Posture**.
+
+### Floating Pip
+
+A separate, 130 × 118 px frameless window (`app/ui/floating_pet.py`) that shows the same Pip sprite as the dashboard. It is independent of the dashboard: hiding, minimizing or closing the dashboard leaves both it and monitoring running.
+
+- **Always on top, never in the way.** It is a tool window (no taskbar button) that never takes keyboard focus, so typing in VS Code or Chrome is not interrupted. It is masked to Pip's own pixels, so clicks anywhere else go to the window underneath.
+- **Drag** it anywhere; the spot is saved. If it is dropped half off-screen it slides fully onto that screen. If its monitor is unplugged (or the saved spot no longer exists) it moves to the main screen's bottom-right corner, above the taskbar.
+- **Double-click** opens the dashboard. **Right-click** shows Open Dashboard, Start / Pause / Resume Monitoring, Hide Pip and Quit Pixel Posture.
+- **Expressions:** Thriving, Warning, Critical and Tracking unavailable while monitoring; neutral (Calibrating) when idle; resting (unavailable) when paused or after a camera error. It repaints only when the state changes and does not animate, so it costs nothing while your posture is steady.
+- **Show it again** after *Hide Pip* with the tray menu's *Show Pip on Desktop*, the dashboard's Quick settings checkbox, or Settings → App. The choice is remembered.
 
 ## 9. Webcam processing and privacy model
 
@@ -392,9 +407,9 @@ Each signal (back, head) is processed independently:
 1. **Smoothing.** A time-based exponential moving average with τ = 1.0 s (`α = 1 − e^(−Δt/τ)`). This is frame-rate independent and copes with irregular frame intervals.
 2. **Entry.** An *issue episode* starts when smoothed severity is **≥ 1.0**. The issue timer starts at that moment.
 3. **Hysteresis.** During an episode, small fluctuations do not reset the timer. Only smoothed severity **< 0.7** counts as "improved".
-4. **Recovery.** The episode ends after **3 s** of continuous improvement (*recovery confirmation*).
-5. **Warning.** An episode lasting **≥ 10 s**. An episode is not escalated while the user is already visibly improving (severity < 0.7), so a short slouch that is being corrected does not warn.
-6. **Critical.** An episode lasting **≥ 30 s** *and* smoothed severity **≥ 1.3**. A marginal deviation (1.0–1.3) never escalates just because time has passed. Critical drops back to warning when severity falls below 1.1.
+4. **Recovery.** The episode ends after **5 s** of continuous improvement (*recovery confirmation*).
+5. **Warning.** An episode lasting **≥ 30 s**. Shorter movements (reaching for something, glancing at notes) never warn. An episode is not escalated while the user is already visibly improving (severity < 0.7), so a slouch that is being corrected does not warn.
+6. **Critical.** A clearly larger deviation (smoothed severity **≥ 1.3**) that has itself lasted **≥ 60 s**. The severe run survives small dips down to 1.1; below 1.1 Critical drops back to Warning. A marginal deviation (1.0–1.3) never escalates just because time has passed, and a long mild episode does not shorten the 60 s.
 7. **Missing data.** Unavailable observations are **not** treated as good posture. They do not advance recovery. If data is missing for more than **2 s**, the tracker resets and reports *unavailable*. A *silent* gap counts as missing data too: if no observations arrive at all for more than 2 s, for example while the laptop sleeps, the next measurement starts a fresh episode instead of counting the gap as time spent slouching.
 
 ### Pet state machine (`PostureEngine`)
@@ -405,10 +420,10 @@ stateDiagram-v2
     Calibrating --> Thriving: calibration accepted
     Calibrating --> Calibrating: rejected (retry)
     Thriving --> Warning: any signal issue ≥ warning duration
-    Warning --> Critical: issue ≥ critical duration AND severity ≥ critical level
+    Warning --> Critical: severity ≥ critical level for the critical duration
     Critical --> Warning: severity < critical exit level
-    Warning --> Thriving: all signals recovered (3 s)
-    Critical --> Thriving: all signals recovered (3 s)
+    Warning --> Thriving: all signals recovered (5 s)
+    Critical --> Thriving: all signals recovered (5 s)
     Thriving --> Unavailable: no valid body AND face data > 2 s, or camera error
     Warning --> Unavailable
     Critical --> Unavailable
@@ -420,17 +435,17 @@ stateDiagram-v2
 | **Calibrating** | neutral, curious | Monitoring starts without a baseline, or the user recalibrates | Calibration accepted | None |
 | **Thriving** | happy, bouncing | Baseline exists, tracking OK, no signal at warning | A signal reaches warning | Optional "Nice recovery!" when arriving from Warning/Critical |
 | **Warning** | concerned | Any signal episode ≥ warning duration | All signals recovered, or critical escalation | One per signal episode |
-| **Critical** | tired / slumped | Episode ≥ critical duration with severity ≥ critical level | Severity below critical exit level → Warning; recovery → Thriving | One per signal episode |
+| **Critical** | tired / slumped | Severity ≥ critical level, sustained for the critical duration | Severity below critical exit level → Warning; recovery → Thriving | One per signal episode |
 | **Tracking unavailable** | resting, eyes closed | Both signals unavailable for > 2 s, or camera error | Valid observations resume | None (alerts suppressed) |
 
 ### Alert policy (`AlertPolicy`)
 
 - Alerts fire only when a signal **enters** Warning or Critical. Each (signal, level) fires at most **once per episode**, so an ongoing issue does not repeat.
-- A global **cooldown** (default 30 s) separates native notifications. If an alert is due during the cooldown, it is **deferred**, not dropped. It is delivered once the cooldown expires *if the condition still holds*.
+- A global **cooldown** (default 60 s) separates native notifications. If an alert is due during the cooldown, it is **deferred**, not dropped. It is delivered once the cooldown expires *if the condition still holds*.
 - The in-app reminder banner always shows the current message, whatever the cooldown.
 - **Pause / Stop / Tracking unavailable** suppress all alerts and clear pending ones.
 - Delivery errors are caught and logged. Monitoring continues.
-- Sound (a Windows system sound, played asynchronously) is optional and can be muted.
+- **Sound:** Pip's own chime, `app/resources/sounds/pip_chime.wav`, is a soft two-note bell (G5 then C6, 0.9 s). The app plays it itself, so every reminder sounds the same whether or not Windows plays a notification sound. It can be muted and its volume set (Settings → Reminders, with **Preview sound**). A new chime replaces one still playing instead of overlapping, chimes less than 1.5 s apart are skipped, and nothing loops. If the file is missing or unreadable, the Windows system sound is used instead and Settings says so. Depending on your Windows notification settings, Windows may also play its own toast sound.
 
 Example messages: *"Time for a posture check!"*, *"You've been leaning forward for a while. Try returning to a comfortable position."*, *"Your head has been tilted downward for a while. Take a moment to reset."*, *"Nice recovery! Your posture is back within your usual range."*
 
@@ -478,7 +493,7 @@ Optional flags: `--debug` (verbose logging), `--log-dir <path>`, and `--self-che
 
 To regenerate the website's pet artwork after editing `sprites.py`: `python local-app/scripts/export_sprites.py`.
 
-**First run:** pick your camera → **Start Monitoring** → follow the calibration prompt → minimize or close the window. Pip lives in the tray (look in the `^` overflow area of the taskbar; you can drag the icon onto the taskbar to keep it visible).
+**First run:** pick your camera → **Start Monitoring** → follow the calibration prompt → minimize or close the window. Floating Pip stays on your desktop (drag it wherever you like) and the app lives in the tray (look in the `^` overflow area of the taskbar; you can drag the icon onto the taskbar to keep it visible).
 
 ## 15. Running the website locally
 
@@ -572,18 +587,24 @@ Settings are edited in the app (**Settings**) and stored in `%APPDATA%\PixelPost
 |---|---|---|---|
 | `camera_index` | 0 | 0–9 | Which webcam to use |
 | `sensitivity` | `balanced` | relaxed / balanced / strict | Tolerance multiplier (×1.35 / ×1.0 / ×0.75) |
-| `warning_seconds` | 10 | 3–120 | Episode duration before a Warning |
-| `critical_seconds` | 30 | warning+5 – 600 | Episode duration before a Critical (also needs severity) |
-| `recovery_seconds` | 3 | 1–30 | Sustained improvement needed to end an episode |
-| `cooldown_seconds` | 30 | 10–1800 | Minimum gap between native notifications |
+| `warning_seconds` | 30 | 3–120 | Episode duration before a Warning |
+| `critical_seconds` | 60 | warning+5 – 600 | How long a clearly larger deviation (severity ≥ 1.3) must last before Critical |
+| `recovery_seconds` | 5 | 1–30 | Sustained improvement needed to end an episode |
+| `cooldown_seconds` | 60 | 10–1800 | Minimum gap between native notifications |
 | `notifications_enabled` | true | — | Native Windows notifications |
 | `notify_on_recovery` | false | — | Also notify when posture recovers |
-| `sound_enabled` | true | — | Play a short system sound with alerts |
+| `sound_enabled` | true | — | Play Pip's chime with alerts |
+| `sound_volume` | 70 | 0–100 | Chime volume in percent |
+| `floating_pet_enabled` | true | — | Show floating Pip on the desktop |
+| `floating_pet_position` | none | — | Floating Pip's saved top-left corner (none = bottom-right of the main screen) |
 | `close_to_tray` | true | — | X button hides to tray (else asks Quit / Keep running) |
 | `show_preview` | true | — | Show the live camera preview |
 | `show_landmarks` | true | — | Draw landmarks on the preview |
 | `reduce_motion` | follows Windows | — | Disable pet animation |
 | `baseline` | none | — | Saved calibration (numbers only) |
+| `settings_version` | 2 | — | File format version, used for the one-time upgrade below |
+
+**Upgrading from the first release.** Version 1 used Warning 10 s / Critical 30 s / recovery 3 s / cooldown 30 s. When a version-1 file is loaded, those values are moved to the new defaults **only if they are still exactly the old defaults**, and the dashboard says so once. The three thresholds are treated as a group and the cooldown separately, so any value you had changed yourself is kept as it was.
 
 Advanced thresholds (smoothing τ, hysteresis levels, critical severity, tolerances, calibration limits) are documented constants in `local-app/app/posture/config.py`.
 
@@ -608,7 +629,7 @@ $p.ExitCode                                                    # 0 = OK
 Get-Content "$env:APPDATA\PixelPosture\logs\pixel_posture.log" -Tail 8
 ```
 
-To share the app, zip the whole `dist\PixelPosture` folder; the exe needs the files next to it. The bundle includes the model files, fonts, MediaPipe's native libraries, `LICENSE`, `THIRD_PARTY_NOTICES.md` and the dependencies' license metadata (about 360 MB, one folder). On first start, matplotlib (imported by MediaPipe) builds a font cache in the user profile, which adds a second or two once. MediaPipe's `vision` package imports `matplotlib` at import time, so the spec deliberately keeps it. See [§25](#25-verification-status) for how far this has been verified. Running from source (§14) is the supported path. The bundle is unsigned, so Windows SmartScreen may warn on first launch.
+To share the app, zip the whole `dist\PixelPosture` folder; the exe needs the files next to it. The bundle includes the model files, fonts, Pip's chime (`app/resources/sounds/pip_chime.wav`), MediaPipe's native libraries, `LICENSE`, `THIRD_PARTY_NOTICES.md` and the dependencies' license metadata (about 360 MB, one folder). On first start, matplotlib (imported by MediaPipe) builds a font cache in the user profile, which adds a second or two once. MediaPipe's `vision` package imports `matplotlib` at import time, so the spec deliberately keeps it. See [§25](#25-verification-status) for how far this has been verified. Running from source (§14) is the supported path. The bundle is unsigned, so Windows SmartScreen may warn on first launch.
 
 ## 21. Troubleshooting
 
@@ -665,10 +686,10 @@ Last re-verified on 2026-10-26 during the stabilization audit (all commands re-r
 
 | Command | Result |
 |---|---|
-| `pytest` | **134 passed**, 0 failed |
-| Fresh venv from `requirements-dev.txt` only (short path) | Installed, `pip check` clean, **134 passed**, `--self-check` exit 0 |
+| `pytest` | **199 passed**, 0 failed |
+| Fresh venv from `requirements-dev.txt` only (short path; release audit, before the floating Pip / chime changes) | Installed, `pip check` clean, 134 passed, `--self-check` exit 0 |
 | `ruff check .` / `ruff format --check .` | Clean |
-| `mypy` (strict) | No issues in 35 files |
+| `mypy` (strict) | No issues in 38 files |
 | `npm ci` + `npm run lint` / `npm test` / `npm run build` (in `showcase/`) | Clean / **20 passed** / build succeeded; `npm audit --omit=dev`: 0 vulnerabilities |
 | Headless-Chrome audit of the production build (5 routes × 375/768/1280 px) | No overflow, broken images, missing alt text, unnamed controls, console errors, failed requests or camera-API calls; visible focus; WCAG AA text contrast; reduced motion respected |
 
@@ -688,6 +709,9 @@ Last re-verified on 2026-10-26 during the stabilization audit (all commands re-r
 ### Not yet verified (needs a person and/or visual check)
 
 - [ ] Windows toast notifications *visibly* appear. The call succeeds without error, but the toast itself was not observed.
+- [ ] Floating Pip on a real Windows desktop: stays on top of VS Code/Chrome, never steals typing focus, lets clicks through around Pip, dragging and multi-monitor placement (placement logic and window flags are covered by automated tests on Qt's offscreen platform only).
+- [ ] Pip's chime is audible, pleasant at the default volume, and the volume slider changes it (asset, format, volume scaling, repeat guard and fallback are unit-tested silently).
+- [ ] The new 30 s / 60 s / 5 s / 60 s timing with a real person (unit-tested with synthetic data).
 - [ ] Warning, Critical and recovery transitions driven by a real person slouching or looking down (unit tests cover the logic with synthetic data).
 - [ ] Behaviour over long sessions (CPU, memory), and real sleep/resume and camera unplugging. The reopen-once logic and the silent-gap reset are covered by automated tests with a simulated camera only.
 - [ ] The packaged exe on a machine without Python.
@@ -707,12 +731,13 @@ Last re-verified on 2026-10-26 during the stabilization audit (all commands re-r
 | Website sections, responsive design, working controls, simulated label | ✅ tested + browser-checked |
 | Repository/README links | ⏳ shown as "coming soon" until `VITE_REPO_URL` is set |
 | README written first and matching the code; docs complete | ✅ |
-| No unapproved commits or pushes | ✅ Git was never initialised |
+| No unapproved commits or pushes | ✅ only the approved initial commit and push |
 
 ## 26. License and third-party assets
 
 - **Project code:** MIT. See [`LICENSE`](LICENSE).
 - **Pip the pixel pet:** original pixel art defined in code (`local-app/app/ui/sprites.py`) and exported as SVG for the website. MIT, same as the project.
+- **Pip's chime** (`local-app/app/resources/sounds/pip_chime.wav`): original, synthesised from sine partials by `local-app/scripts/generate_chime.py`. No samples or third-party audio. MIT, same as the project.
 - **MediaPipe models** (`pose_landmarker_lite.task`, `face_landmarker.task`): © Google, **Apache License 2.0**, downloaded from `https://storage.googleapis.com/mediapipe-models/`. See the [MediaPipe model cards](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker#models). Not redistributed in this repository.
 - **Press Start 2P** font (desktop decorative labels; website via `@fontsource/press-start-2p`): © CodeMan38, **SIL Open Font License 1.1**.
 - **Inter** font (website, via `@fontsource/inter`): © The Inter Project Authors, **SIL Open Font License 1.1**. The desktop app uses Inter if it is installed and otherwise falls back to Segoe UI.

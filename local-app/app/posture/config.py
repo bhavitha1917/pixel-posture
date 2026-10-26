@@ -43,9 +43,9 @@ class Tolerances:
 
 @dataclass(frozen=True)
 class TimingConfig:
-    warning_s: float = 10.0  # issue-episode duration before Warning
-    critical_s: float = 30.0  # issue-episode duration before Critical (severity also required)
-    recovery_s: float = 3.0  # sustained improvement needed to end an episode
+    warning_s: float = 30.0  # issue-episode duration before Warning
+    critical_s: float = 60.0  # how long the *severe* deviation must last before Critical
+    recovery_s: float = 5.0  # sustained improvement needed to end an episode
     smoothing_tau_s: float = 1.0  # EMA time constant; time-based so frame rate does not matter
     missing_grace_s: float = 2.0  # how long missing data is tolerated before a tracker resets
 

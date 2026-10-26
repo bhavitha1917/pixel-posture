@@ -14,7 +14,7 @@ import pytest
 # Qt tests run headless (also in CI).
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from app.posture.config import Tolerances
+from app.posture.config import PostureConfig, Tolerances
 from app.posture.models import Baseline, BodyFeatures, HeadFeatures, Observation
 
 BASE_NECK = 0.6
@@ -24,6 +24,13 @@ BASE_ANGLE = 0.0
 BASE_PITCH = 10.0
 BASE_YAW = 0.0
 TOL = Tolerances()
+# Mechanism tests use short timers (the version-1 defaults) so they stay fast and readable.
+# test_default_timing.py exercises the shipped defaults.
+SHORT = {"warning_s": 10.0, "critical_s": 30.0, "recovery_s": 3.0}
+
+
+def short_config(**kwargs: object) -> PostureConfig:
+    return PostureConfig(**kwargs).with_timing(**SHORT)  # type: ignore[arg-type]
 
 
 def make_baseline(**overrides: float) -> Baseline:

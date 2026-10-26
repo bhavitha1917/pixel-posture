@@ -1,5 +1,5 @@
 import pytest
-from conftest import make_baseline, obs, timeline
+from conftest import make_baseline, obs, short_config, timeline
 
 from app.posture.config import PostureConfig, Sensitivity
 from app.posture.engine import (
@@ -21,7 +21,7 @@ def feed(engine: PostureEngine, start, end, back=0.0, head=0.0, fps=10.0) -> Pos
 
 
 def calibrated_engine(config: PostureConfig | None = None) -> PostureEngine:
-    return PostureEngine(config, baseline=make_baseline())
+    return PostureEngine(config or short_config(), baseline=make_baseline())
 
 
 def test_without_baseline_engine_asks_for_calibration():
@@ -150,7 +150,7 @@ def test_sensitivity_changes_tolerance():
     severity_1_2_balanced = 1.2
     balanced = feed(calibrated_engine(), 0, 15, head=severity_1_2_balanced)
     relaxed = feed(
-        calibrated_engine(PostureConfig(sensitivity=Sensitivity.RELAXED)),
+        calibrated_engine(short_config(sensitivity=Sensitivity.RELAXED)),
         0,
         15,
         head=severity_1_2_balanced,

@@ -31,6 +31,16 @@ from app.ui.widgets import Banner, Card, Chip, PreviewView, SignalPanel, StatTil
 from app.ui.widgets import format_duration as fmt
 
 CAMERA_CHOICES = 5
+
+
+def fmt_setting(seconds: float) -> str:
+    """'45 s', '1 min', '1 min 30 s': settings read better without a zero-padded '00 s'."""
+    whole = int(seconds)
+    if whole < 60 or whole % 60:
+        return fmt(whole) if whole < 60 else f"{whole // 60} min {whole % 60} s"
+    return f"{whole // 60} min"
+
+
 FIRST_RUN_TEXT = (
     "Camera is off.\n\n"
     "1. Pick your camera and sit comfortably upright.\n"
@@ -59,6 +69,7 @@ class MainWindow(QMainWindow):
     detect_cameras_clicked = Signal()
     camera_selected = Signal(int)
     sound_toggled = Signal(bool)
+    floating_pet_toggled = Signal(bool)
     preview_toggled = Signal(bool)
     landmarks_toggled = Signal(bool)
     sensitivity_selected = Signal(object)  # Sensitivity
@@ -202,6 +213,12 @@ class MainWindow(QMainWindow):
         self.sound_check = QCheckBox("Sound with reminders")
         self.sound_check.toggled.connect(self.sound_toggled.emit)
         grid.addWidget(self.sound_check, 2, 0, 1, 3)
+        self.floating_pet_check = QCheckBox("Show Pip on the desktop")
+        self.floating_pet_check.setToolTip(
+            "A small Pip that stays on top while you work in other apps"
+        )
+        self.floating_pet_check.toggled.connect(self.floating_pet_toggled.emit)
+        grid.addWidget(self.floating_pet_check, 3, 0, 1, 3)
         grid.setColumnStretch(1, 1)
         quick.body.addLayout(grid)
         self.alert_timing = label("", "hint", wrap=True)
@@ -266,16 +283,19 @@ class MainWindow(QMainWindow):
         self.sound_check.setChecked(settings.sound_enabled)
         self.sound_check.blockSignals(False)
         for check, value in (
+            (self.floating_pet_check, settings.floating_pet_enabled),
             (self.preview_check, settings.show_preview),
             (self.landmarks_check, settings.show_landmarks),
         ):
             check.blockSignals(True)
             check.setChecked(value)
             check.blockSignals(False)
+        f = fmt_setting
         self.alert_timing.setText(
-            f"Warning after {fmt(settings.warning_seconds)} of sustained deviation, critical "
-            f"after {fmt(settings.critical_seconds)}. Notifications at most every "
-            f"{fmt(settings.cooldown_seconds)}."
+            f"Warning after {f(settings.warning_seconds)} of sustained deviation, critical "
+            f"after {f(settings.critical_seconds)} of clearly larger deviation. Recovery after "
+            f"{f(settings.recovery_seconds)} of better posture. Notifications at most every "
+            f"{f(settings.cooldown_seconds)}."
         )
         self._show_preview = settings.show_preview
         if self._status is MonitorStatus.RUNNING:

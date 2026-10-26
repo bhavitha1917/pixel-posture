@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -48,8 +49,11 @@ def seconds_box(low: float, high: float, value: float, step: float = 1.0) -> QDo
 
 class SettingsDialog(QDialog):
     test_notification_requested = Signal()
+    sound_preview_requested = Signal(int)  # volume percent
 
-    def __init__(self, settings: AppSettings, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, settings: AppSettings, parent: QWidget | None = None, chime_available: bool = True
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Pixel Posture Settings")
         self.setMinimumWidth(460)
@@ -77,7 +81,8 @@ class SettingsDialog(QDialog):
         self.recovery = seconds_box(1, 30, settings.recovery_seconds)
         form.addRow("Recovery confirmation", self.recovery)
         note = QLabel(
-            "Critical also requires a clearly larger deviation, not just more time. "
+            "Short movements never warn. Critical needs a clearly larger deviation that "
+            "itself lasts this long. "
             "These are experimental defaults, not medical thresholds."
         )
         note.setObjectName("hint")
@@ -93,12 +98,39 @@ class SettingsDialog(QDialog):
         self.notifications.setChecked(settings.notifications_enabled)
         self.recovery_notify = QCheckBox("Also notify when posture recovers")
         self.recovery_notify.setChecked(settings.notify_on_recovery)
-        self.sound = QCheckBox("Play a short sound")
+        self.sound = QCheckBox("Play Pip's chime")
         self.sound.setChecked(settings.sound_enabled)
+        self.volume = QSlider(Qt.Orientation.Horizontal)
+        self.volume.setRange(0, 100)
+        self.volume.setSingleStep(5)
+        self.volume.setPageStep(10)
+        self.volume.setValue(settings.sound_volume)
+        self.volume.setAccessibleName("Chime volume")
+        self.volume_label = QLabel()
+        self.volume_label.setMinimumWidth(40)
+        self.volume.valueChanged.connect(lambda v: self.volume_label.setText(f"{v}%"))
+        self.volume_label.setText(f"{settings.sound_volume}%")
+        self.preview_sound = QPushButton("Preview sound")
+        self.preview_sound.setObjectName("ghost")
+        self.preview_sound.clicked.connect(
+            lambda: self.sound_preview_requested.emit(self.volume.value())
+        )
+        volume_row = QHBoxLayout()
+        volume_row.addWidget(self.volume, 1)
+        volume_row.addWidget(self.volume_label)
+        volume_row.addWidget(self.preview_sound)
         self.cooldown = seconds_box(10, 1800, settings.cooldown_seconds, 10)
         alerts_form.addRow(self.notifications)
         alerts_form.addRow(self.recovery_notify)
         alerts_form.addRow(self.sound)
+        alerts_form.addRow("Chime volume", volume_row)
+        if not chime_available:
+            missing = QLabel(
+                "Pip's chime file is missing or unreadable, so the Windows sound is used instead."
+            )
+            missing.setObjectName("hint")
+            missing.setWordWrap(True)
+            alerts_form.addRow(missing)
         alerts_form.addRow("Minimum gap between notifications", self.cooldown)
         test = QPushButton("Send test notification")
         test.setObjectName("ghost")
@@ -110,6 +142,8 @@ class SettingsDialog(QDialog):
         app_form = QFormLayout(app_box)
         self.close_to_tray = QCheckBox("Close button keeps Pixel Posture running in the tray")
         self.close_to_tray.setChecked(settings.close_to_tray)
+        self.floating_pet = QCheckBox("Show Pip on the desktop (small, always on top)")
+        self.floating_pet.setChecked(settings.floating_pet_enabled)
         self.preview = QCheckBox("Show camera preview")
         self.preview.setChecked(settings.show_preview)
         self.landmarks = QCheckBox("Draw landmarks on the preview")
@@ -119,6 +153,7 @@ class SettingsDialog(QDialog):
             self.motion.addItem(text, motion)
         self.motion.setCurrentIndex([v for _, v in MOTION_CHOICES].index(settings.reduce_motion))
         app_form.addRow(self.close_to_tray)
+        app_form.addRow(self.floating_pet)
         app_form.addRow(self.preview)
         app_form.addRow(self.landmarks)
         app_form.addRow("Pet animation", self.motion)
@@ -168,6 +203,8 @@ class SettingsDialog(QDialog):
             notifications_enabled=self.notifications.isChecked(),
             notify_on_recovery=self.recovery_notify.isChecked(),
             sound_enabled=self.sound.isChecked(),
+            sound_volume=self.volume.value(),
+            floating_pet_enabled=self.floating_pet.isChecked(),
             close_to_tray=self.close_to_tray.isChecked(),
             show_preview=self.preview.isChecked(),
             show_landmarks=self.landmarks.isChecked(),

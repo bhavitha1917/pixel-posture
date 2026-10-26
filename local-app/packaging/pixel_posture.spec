@@ -12,11 +12,14 @@ RESOURCES = APP / "app" / "resources"
 for model in ("pose_landmarker_lite.task", "face_landmarker.task"):
     if not (RESOURCES / "models" / model).is_file():
         raise SystemExit(f"Missing {model}: run python local-app/scripts/download_models.py first")
+if not (RESOURCES / "sounds" / "pip_chime.wav").is_file():
+    raise SystemExit("Missing pip_chime.wav: run python local-app/scripts/generate_chime.py")
 
 datas = [
     (str(RESOURCES / "models" / "pose_landmarker_lite.task"), "app/resources/models"),
     (str(RESOURCES / "models" / "face_landmarker.task"), "app/resources/models"),
     (str(RESOURCES / "fonts"), "app/resources/fonts"),
+    (str(RESOURCES / "sounds"), "app/resources/sounds"),  # Pip's chime (original, MIT)
 ]
 datas += collect_data_files("mediapipe", excludes=["**/*.task"])
 # Licence texts for everything redistributed in the bundle (see THIRD_PARTY_NOTICES.md).

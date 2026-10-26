@@ -109,8 +109,8 @@ const PIPELINE = [
 const STATES: { state: PetState; title: string; body: string }[] = [
   { state: 'calibrating', title: 'Calibrating', body: 'Learning your comfortable posture.' },
   { state: 'thriving', title: 'Thriving', body: 'Within your usual range.' },
-  { state: 'warning', title: 'Warning', body: 'A deviation has lasted ~10 s.' },
-  { state: 'critical', title: 'Critical', body: 'Clearly larger, for ~30 s.' },
+  { state: 'warning', title: 'Warning', body: 'A deviation has lasted ~30 s.' },
+  { state: 'critical', title: 'Critical', body: 'Clearly larger, for ~60 s.' },
   { state: 'unavailable', title: 'Unavailable', body: "Can't see you clearly." },
 ]
 

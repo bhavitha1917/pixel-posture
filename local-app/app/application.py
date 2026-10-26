@@ -14,12 +14,10 @@ from app.posture.config import Sensitivity
 from app.posture.models import PostureResult
 from app.services.alerts import Alert
 from app.services.monitor import MonitorController, MonitorStatus
-from app.services.notifications import (
-    AlertDispatcher,
-    SystemSoundPlayer,
-    TrayNotificationBackend,
-)
+from app.services.notifications import AlertDispatcher, TrayNotificationBackend
+from app.services.sound import ChimePlayer
 from app.settings.store import AppSettings, SettingsStore
+from app.ui.floating_pet import FloatingPet
 from app.ui.main_window import CAMERA_CHOICES, MainWindow
 from app.ui.pet_widget import system_prefers_reduced_motion
 from app.ui.settings_dialog import SettingsDialog
@@ -52,12 +50,13 @@ class PixelPostureApp(QObject):
         self.controller = MonitorController(settings, CameraSource, FrameAnalyzer)
         self.tray = TrayController(self)
         self.tray.show()
-        self.dispatcher = AlertDispatcher(
-            TrayNotificationBackend(self.tray.icon), SystemSoundPlayer()
-        )
+        self.chime = ChimePlayer(store.path.parent / "cache" / "sounds", settings.sound_volume)
+        self.dispatcher = AlertDispatcher(TrayNotificationBackend(self.tray.icon), self.chime)
         self.controller.set_dispatcher(self.dispatcher)
         self.window = MainWindow(settings)
+        self.pet_window = FloatingPet()
         self._apply_motion_preference()
+        self._apply_floating_pet()
 
         missing = missing_or_invalid()
         if missing:
@@ -74,6 +73,10 @@ class PixelPostureApp(QObject):
                 "and notifications appear in this window only.",
                 "warn",
             )
+        if store.migration_notes:
+            if self.window.banner.isHidden():  # a problem banner above takes priority
+                self.window.banner.show_message(" ".join(store.migration_notes), "info")
+            self._save()  # record the migration so the note is shown only once
         self._connect()
 
         self._stats_timer = QTimer(self)
@@ -111,7 +114,18 @@ class PixelPostureApp(QObject):
         t.pause_requested.connect(c.pause)
         t.resume_requested.connect(c.resume)
         t.settings_requested.connect(self.open_settings)
+        t.floating_pet_toggled.connect(lambda on: self._update_settings(floating_pet_enabled=on))
         t.quit_requested.connect(self.quit)
+
+        p = self.pet_window
+        p.open_dashboard_requested.connect(self.show_window)
+        p.start_requested.connect(c.start)
+        p.pause_requested.connect(c.pause)
+        p.resume_requested.connect(c.resume)
+        p.hide_requested.connect(self._hide_floating_pet)
+        p.quit_requested.connect(self.quit)
+        p.moved.connect(lambda x, y: self._update_settings(floating_pet_position=(x, y)))
+        w.floating_pet_toggled.connect(lambda on: self._update_settings(floating_pet_enabled=on))
         self._qt_app.aboutToQuit.connect(self._on_about_to_quit)
 
     # ------------------------------------------------------------------ settings
@@ -126,7 +140,9 @@ class PixelPostureApp(QObject):
         self._settings = settings
         self.controller.apply_settings(settings)
         self.window.apply_settings(settings)
+        self.chime.volume = settings.sound_volume
         self._apply_motion_preference()
+        self._apply_floating_pet()
         self._save()
 
     def _on_sensitivity(self, value: Sensitivity) -> None:
@@ -150,10 +166,26 @@ class PixelPostureApp(QObject):
             reduce = system_prefers_reduced_motion()
         self.window.pet.set_reduce_motion(reduce)
 
+    def _apply_floating_pet(self) -> None:
+        enabled = self._settings.floating_pet_enabled and not self._quitting
+        self.tray.set_floating_pet_checked(enabled)
+        if enabled and not self.pet_window.isVisible():
+            self.pet_window.show_at(self._settings.floating_pet_position)
+        elif not enabled and self.pet_window.isVisible():
+            self.pet_window.hide()
+
+    def _hide_floating_pet(self) -> None:
+        self._update_settings(floating_pet_enabled=False)
+        hint = "Pip is hidden. Show it again from the tray menu or Quick settings."
+        self.window.banner.show_message(hint, "info")
+        if self.tray.available and not self.window.isVisible():
+            self.tray.icon.showMessage("Pip is hidden", hint, self.tray.icon.icon(), 6000)
+
     def open_settings(self) -> None:
         self.show_window()
-        dialog = SettingsDialog(self._settings, self.window)
+        dialog = SettingsDialog(self._settings, self.window, self.chime.asset_available)
         dialog.test_notification_requested.connect(self._send_test_notification)
+        dialog.sound_preview_requested.connect(self.chime.preview)
         if dialog.exec() == SettingsDialog.DialogCode.Accepted:
             self._set_settings(dialog.result_settings())
 
@@ -204,6 +236,7 @@ class PixelPostureApp(QObject):
     def _on_status(self, status: MonitorStatus) -> None:
         self.window.set_status(status)
         self.tray.update_status(status)
+        self.pet_window.set_monitor_status(status)
         if status is MonitorStatus.ERROR and self.controller.last_error:
             self.window.banner.show_message(self.controller.last_error, "bad")
             if not self.window.isVisible():
@@ -220,6 +253,7 @@ class PixelPostureApp(QObject):
         self.window.show_result(result)
         if self.controller.status is MonitorStatus.RUNNING:
             self.tray.update_pet_state(result.state)
+            self.pet_window.set_state(result.state)
 
     def _on_visibility(self, visible: bool) -> None:
         self.controller.set_preview_wanted(visible)
@@ -268,6 +302,8 @@ class PixelPostureApp(QObject):
         self.controller.shutdown()
         self._save()
         self.tray.hide()
+        self.pet_window.hide()
+        self.pet_window.close()
         self.window.allow_close = True
         self.window.close()
         self._qt_app.quit()
