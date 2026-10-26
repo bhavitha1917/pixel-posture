@@ -1,0 +1,7 @@
+# Netlify: set the site's base directory to "showcase"; paths below are relative to it.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

@@ -1,0 +1,1 @@
+"""Persistent, validated user settings."""

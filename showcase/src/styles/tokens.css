@@ -1,0 +1,49 @@
+/* Design tokens: the single source for colours, type, spacing and motion.
+   Colours mirror the desktop app (local-app/app/ui/theme.py). */
+:root {
+  --lavender: #e1d8ff;
+  --lavender-soft: #efeaff;
+  --lavender-deep: #6e5bc7;
+  --lavender-deeper: #5a48ae;
+  --bg: #f7f4ff;
+  --surface: #fffefc;
+  --border: #e6dff7;
+  --mint: #cbe8d4;
+  --mint-text: #24613a;
+  --peach: #f7d7be;
+  --peach-text: #86471b;
+  --coral: #f6c1ba;
+  --coral-text: #9c2f25;
+  --neutral: #eeeaf7;
+  --text: #2e2240;
+  --text-muted: #6b5f80;
+
+  --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-pixel: 'Press Start 2P', ui-monospace, monospace;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --shadow: 0 1px 2px rgb(46 34 64 / 6%), 0 8px 24px rgb(46 34 64 / 6%);
+  --shadow-lift: 0 2px 4px rgb(46 34 64 / 8%), 0 14px 32px rgb(46 34 64 / 10%);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --content: 1120px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --duration: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration: 0ms;
+  }
+}
