@@ -23,7 +23,7 @@ const SECTIONS = [
   ['install', 'Install'],
   ['launch', 'Launch'],
   ['calibrate', 'Calibrate'],
-  ['background', 'Background & tray'],
+  ['background', 'Background, tray & floating Pip'],
   ['settings', 'Settings'],
   ['troubleshooting', 'Troubleshooting'],
   ['privacy-notes', 'Privacy'],
@@ -45,6 +45,10 @@ const TROUBLESHOOTING: [string, string][] = [
     'Turn off Do Not Disturb / Focus and allow notifications for Python (or PixelPosture.exe) in Settings → System → Notifications. Use Settings → Send test notification.',
   ],
   ['Tray icon not visible', 'Look in the taskbar overflow (^) and drag Pip onto the taskbar.'],
+  [
+    'Floating Pip is gone',
+    'Turn on Show Pip on Desktop in the tray menu, in Quick settings, or in Settings → App.',
+  ],
 ]
 
 export function DocsPage() {
@@ -55,7 +59,7 @@ export function DocsPage() {
         <h1>Install Pixel Posture</h1>
         <p>
           Pixel Posture runs from source with Python on Windows. Setup takes about five minutes,
-          most of it downloading dependencies.
+          most of it downloading dependencies. There is no prebuilt download yet.
         </p>
       </section>
 
@@ -124,7 +128,7 @@ export function DocsPage() {
           </section>
 
           <section id="background">
-            <h2>Background monitoring & the tray</h2>
+            <h2>Background monitoring, the tray & floating Pip</h2>
             <ul>
               <li>Minimizing or switching apps does not stop monitoring.</li>
               <li>
@@ -133,7 +137,20 @@ export function DocsPage() {
               </li>
               <li>
                 Right-click Pip's tray icon for <strong>Open</strong>, <strong>Pause</strong> /{' '}
-                <strong>Resume</strong>, <strong>Settings</strong> and <strong>Quit</strong>.
+                <strong>Resume</strong>, <strong>Show Pip on Desktop</strong>,{' '}
+                <strong>Settings</strong> and <strong>Quit</strong>.
+              </li>
+              <li>
+                A small <strong>floating Pip</strong> sits on top of your other windows (bottom-right
+                at first) and shows your posture state. It never takes keyboard focus, and clicks
+                next to it go to the app underneath.
+              </li>
+              <li>
+                Drag floating Pip anywhere; the spot is remembered. Double-click it to open the
+                dashboard, or right-click it for <strong>Open Dashboard</strong>,{' '}
+                <strong>Pause</strong> / <strong>Resume</strong>, <strong>Hide Pip</strong> and{' '}
+                <strong>Quit</strong>. Bring a hidden Pip back from the tray menu or Quick
+                settings.
               </li>
               <li>Pause turns the camera off. Quit stops everything and releases the camera.</li>
             </ul>
@@ -179,7 +196,15 @@ export function DocsPage() {
                   <tr>
                     <td>Sound</td>
                     <td>On</td>
-                    <td>Pip&apos;s own two-note chime with reminders, with a volume setting.</td>
+                    <td>
+                      Pip&apos;s own two-note chime with reminders. Volume 70% by default, with a
+                      Preview sound button.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Floating Pip</td>
+                    <td>On</td>
+                    <td>Show Pip on top of other windows. Also in the tray menu and Quick settings.</td>
                   </tr>
                 </tbody>
               </table>

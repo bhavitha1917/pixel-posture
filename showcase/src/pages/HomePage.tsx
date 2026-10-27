@@ -28,7 +28,7 @@ const FEATURES: Feature[] = [
   {
     icon: <Activity size={22} />,
     title: 'Continuous local monitoring',
-    body: 'Runs on a background thread at about 12 frames per second while you work in other apps.',
+    body: 'MediaPipe pose and face models run on your PC, on a background thread at about 12 frames per second, while you work in other apps.',
   },
   {
     icon: <Gauge size={22} />,
@@ -51,18 +51,18 @@ const FEATURES: Feature[] = [
     icon: <Timer size={22} />,
     tone: 'peach',
     title: 'Duration-based alerts',
-    body: 'Brief movements are ignored. Reminders come only when a deviation lasts, with hysteresis and recovery checks.',
+    body: 'Brief movements are ignored. Warning after 30 s of sustained deviation, Critical only after 60 s of a clearly larger one, and 5 s of better posture to recover.',
   },
   {
     icon: <BellRing size={22} />,
     tone: 'peach',
-    title: 'Native notifications',
-    body: 'Windows notifications with a configurable cooldown and no repeats for the same ongoing issue.',
+    title: "Notifications & Pip's chime",
+    body: "Windows notifications at most once a minute by default, with Pip's own two-note chime. Set its volume and preview it in Settings.",
   },
   {
     icon: <MonitorSmartphone size={22} />,
-    title: 'System-tray operation',
-    body: 'Close or minimize the window and Pip keeps watch from the tray: pause, resume or quit from there.',
+    title: 'Floating Pip & tray controls',
+    body: 'A small Pip floats on top of your other windows. Drag it anywhere; right-click to open the dashboard, pause, resume, hide Pip or quit. The tray has the same controls.',
   },
   {
     icon: <Heart size={22} />,
@@ -101,7 +101,7 @@ const PIPELINE = [
   },
   {
     title: 'Pet & notifications',
-    body: 'The dashboard, tray icon and rate-limited Windows notifications update.',
+    body: 'The dashboard, floating Pip, tray icon and rate-limited Windows notifications update.',
     where: 'UI thread',
   },
 ]
@@ -155,7 +155,8 @@ export function HomePage() {
             <h2 id="preview-heading">A calm dashboard that you can minimize</h2>
             <p>
               Pip, two separate posture signals, an optional camera preview and your session
-              summary in one window. Close it and monitoring continues from the tray.
+              summary in one window. Close it and monitoring continues from the tray, while a small
+              floating Pip keeps you company on the desktop.
             </p>
           </div>
           <div className="grid grid--2">
@@ -327,8 +328,8 @@ export function HomePage() {
             <PetSprite state="calibrating" label="" />
             <h2>Ready to meet Pip?</h2>
             <p>
-              Try the simulated demo in your browser, or install the desktop app on Windows. Free
-              and open source.
+              Try the simulated demo in your browser, or run the real desktop app on Windows from
+              source. Free and open source.
             </p>
             <div className="hero__actions">
               <Link to="/demo" className="btn btn--primary">

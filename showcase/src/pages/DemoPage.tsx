@@ -84,7 +84,8 @@ export function DemoPage() {
         <h1>Meet Pip's moods</h1>
         <p>
           Step through the states the desktop app uses, or play a short scripted session. This
-          page never asks for your camera and does no posture detection.
+          page never asks for your camera and does no posture detection. Real detection happens
+          only in the Windows desktop app, on your own PC.
         </p>
       </section>
 
@@ -168,10 +169,13 @@ export function DemoPage() {
         <div className="callout callout--lavender" style={{ marginTop: 'var(--space-5)' }}>
           <h3>How the real app decides</h3>
           <p style={{ margin: 0 }}>
-            The desktop app compares live landmark estimates with your own calibrated baseline,
+            The desktop app uses your webcam and MediaPipe, locally, and compares live landmark
+            estimates with your own calibrated baseline. It
             warns after about 30 seconds of sustained deviation, escalates only if a clearly
             larger deviation lasts about 60 seconds, and needs 5 seconds of
-            improvement before it counts as recovered. <Link to="/#how-it-works">See the
+            improvement before it counts as recovered. Reminders come at most once a minute by default,
+            with Pip&apos;s chime, and a floating Pip can show the state on your desktop.{' '}
+            <Link to="/#how-it-works">See the
             pipeline</Link> or <Link to="/docs">install the app</Link>.
           </p>
         </div>
